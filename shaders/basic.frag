@@ -9,7 +9,6 @@ in float displacedMat;
 in vec3 worldNormal;
 in vec2 uv;
 
-uniform float time;
 
 // lightDirection points from the surface toward the directional light.
 uniform vec3 lightDirection;
@@ -18,27 +17,43 @@ uniform vec3 viewPosition;
 uniform vec3 baseColor;
 uniform float ambientStrength;
 uniform float specularStrength;
-uniform float shininess;
 uniform sampler2D surfaceTexture;
+uniform float planeSize;
+uniform float time;
 
 out vec4 FragColor; // The colour produced for this fragment.
 
 void main()
 {
+    float UVScale = 1.0;
     vec3 colorTint = vec3(0.114, 0.557, 0.922);
+    //vec3 colorTint = vec3(0.29, 0.6, 0.82);
+    vec3 foamTint = vec3(0.89, 1, 1);
     float Brightness = 1.0;
-    float Contrast = 0.3;
+    float Contrast = 0.05;
+    float alpha = 1;
+    float waterAlpha = 1;
+    float foamAlpha = 1;
+    float foamScale = 1.0;
 
-    vec4 texel = texture(surfaceTexture, uv);
-    vec3 materialColor = texel.rgb * baseColor * colorTint * Brightness;
-    materialColor = mix(colorTint, materialColor, Contrast);
+    vec4 texel = texture(surfaceTexture, uv * UVScale * planeSize);
+    vec3 materialColor = texel.rgb * baseColor * Brightness;
 
+    float noise = sin(vertexPos.x + vertexPos.z * foamScale * 2);
+    noise += sin(vertexPos.x + vertexPos.z * foamScale * 10);
+    noise -= sin(vertexPos.x + vertexPos.z * foamScale * 40);
+    noise += sin(vertexPos.z + vertexPos.x * foamScale * 2);
+    noise += sin(vertexPos.z + vertexPos.x * foamScale * 50);
+    noise -= sin(vertexPos.z + vertexPos.x * foamScale * 30);
     
-    vec3 modifiedColor = materialColor;
-    vec3 foam = vec3(0.8,0.8,0.8);
-    modifiedColor = materialColor + (foam * (clamp(1.5 * vertexPos.y,0,1)));
-    //modifiedColor = materialColor + (foam * (clamp(((displacedMat - 0.8) * 10),0,1)));
+    float foamNoiseMask = clamp(((displacedMat + 0.5) * 0.6),0,1);
+    float foamMask = clamp(((displacedMat - 0.25) * 1),0,1);
+    foamMask = clamp(foamMask * 1.3 + clamp(noise * foamNoiseMask,0,1) * 0.3,0,1);
 
+    vec3 combinedTint = mix(colorTint, foamTint, foamMask);
+    alpha = mix(waterAlpha, foamAlpha, foamMask);
+    //materialColor = mix(combinedTint, materialColor, Contrast);
+    materialColor = combinedTint;
 
     // Interpolation can change a normal's length, so normalize per fragment.
     vec3 N = normalize(worldNormal);
@@ -50,17 +65,20 @@ void main()
     vec3 H = normalize(L + V);
 
     // Only a surface facing the light may receive a specular highlight.
+    float waterShininess = 5;
+    float foamShininess = 20;
+    float shininess = mix(waterShininess, foamShininess, foamMask);
     float specular = 0.0;
     if (diffuse > 0.0)
     {
         specular = pow(max(dot(N, H), 0.0), shininess);
     }
 
-    vec3 ambientColor = ambientStrength * modifiedColor * lightColor;
-    vec3 diffuseColor = diffuse * modifiedColor * lightColor;
+    vec3 ambientColor = ambientStrength * materialColor * lightColor;
+    vec3 diffuseColor = diffuse * materialColor * lightColor;
     vec3 specularColor = specularStrength * specular * lightColor;
 
     vec3 color = ambientColor + diffuseColor + specularColor;
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, alpha);
 
 }
